@@ -67,17 +67,20 @@ namespace Project1
 
         public override void Draw(GameTime gameTime, SpriteBatch spriteBatch)
         {
+            float y_offset = (float)Math.Sin((gameTime.TotalGameTime.TotalSeconds*2 + Rectangle.X)) * 4;
             var colour = Color.White;
 
             if (_isHovering)
                 colour = Color.Gray;
 
-            spriteBatch.Draw(_texture, Rectangle, colour);
+            Rectangle r = Rectangle;
+            r.Y += (int) y_offset;
+            spriteBatch.Draw(_texture, r, colour);
 
             if (!string.IsNullOrEmpty(Text))
             {
                 var x = (Rectangle.X + (Rectangle.Width / 2)) - (_font.MeasureString(Text).X / 2);
-                var y = (Rectangle.Y + (Rectangle.Height / 2)) - (_font.MeasureString(Text).Y / 2);
+                var y = (Rectangle.Y + (Rectangle.Height / 2)) - (_font.MeasureString(Text).Y / 2)+y_offset;
 
                 spriteBatch.DrawString(_font, Text, new Vector2(x, y), PenColour);
             }

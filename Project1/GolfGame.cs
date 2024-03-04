@@ -110,6 +110,8 @@ namespace Project1
         public float mult = 1.1f;
         public float sensitivity = .025f;
         public Boolean spacedownlast = false;
+        public static double timeStill = 0;
+        public double timeStillMax = .5f;
 
         public GolfGame()
         {
@@ -120,17 +122,12 @@ namespace Project1
 
         protected override void Initialize()
         {
-            // TODO: Add main menu and level select.
-
-
-
             curLevel = 0;
             levelCompleted = false;
 
             origin = new Vector2(400, 400);
 
             state = Gamestate.Init;
-            //Initialize first ball. Will move later if multiplayer is enabled.
             balls = new List<Ball>();
 
             
@@ -150,6 +147,7 @@ namespace Project1
          */
         private void ReadMap(String filename)
         {
+            levelCompleted = false;
             //gets the path to the base project1 folder.
             string winDir = Directory.GetCurrentDirectory();
             winDir = winDir.Substring(0, winDir.Length - 24);
@@ -205,6 +203,8 @@ namespace Project1
             String[] points;
             switch (first[0].ToCharArray()[0]) {
                 case 'a':
+                    //This means the level component is a wall
+                    //Read as: x1,y1,x2,y2
                     points = first[1].Split(',');
                     Vector2 p1 = new Vector2(int.Parse(points[0]), int.Parse(points[1]));
                     Vector2 p2 = new Vector2(int.Parse(points[2]), int.Parse(points[3]));
@@ -212,6 +212,8 @@ namespace Project1
                     walls.Add(w);
                     break;
                 case 'b':
+                    //This means the level component is a zone
+                    //Read as: direction,force,x,y,width,height
                     points = first[1].Split(',');
                     Zone z = new Zone();
                     z.direction = int.Parse(points[0]);
@@ -237,16 +239,27 @@ namespace Project1
                             break;
                         case '2':
                             //2 means the button is the load level button
-
+                            //TODO
                             break;
                     }
 
                     buttons.Add(b);
                     break;
+                case 't':
+                    //This means the level component is a Text.
+                    //Read as: x,y,width,height, TEXT
+                    points = first[1].Split(','); //Notably, you cannot have a text string with a comma.
+                    Menu m = new Menu();
+                    m.texture = null;
+                    m.action = points[4];
+                    m.rectangle = new Rectangle(int.Parse(points[0]), int.Parse(points[1]), int.Parse(points[2]), int.Parse(points[3]));
+                    menus.Add(m);
+                    break;
             }
 
         }
 
+        //This is an EventHandler function that is given to the Next Level Buttons
         static void nextLevel(object sender, LevelChangeEventArgs e)
         {
             if (checkLevel(curLevel + 1))
@@ -256,6 +269,7 @@ namespace Project1
             }
         }
 
+        //This is an EventHandler function that is given to the Previous Level Buttons
         static void prevLevel(object sender, LevelChangeEventArgs e)
         {
             if (checkLevel(curLevel - 1))
@@ -265,6 +279,7 @@ namespace Project1
             }
         }
 
+        //This is a helper function to allow for LoadContent to be ran from an outside source in case something else (buttons) tell the game to change level.
         public void UpdateLevel()
         {
             balls.Clear();
@@ -275,6 +290,7 @@ namespace Project1
             LoadContent();
         }
 
+        //This checks if a level of a given number is present or if it returns a file not found exception.
         public static Boolean checkLevel(int n)
         {
             string winDir = Directory.GetCurrentDirectory();
@@ -314,6 +330,7 @@ namespace Project1
             hole = Content.Load<Texture2D>("hole");
             buttontex = Content.Load<Texture2D>("button");
 
+            //Initialize first ball. Will move later if multiplayer is enabled.
             Ball b = new Ball(new Vector2(0, 0), 16);
             b.SetVector(new Vector2(0, 0));
             b.Update();
@@ -341,8 +358,6 @@ namespace Project1
                     state = Gamestate.Exit;
                     Exit();
                 }
-                deltTime = forcemult * (float)(gameTime.ElapsedGameTime.TotalSeconds - prevTime);
-                prevTime = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
                 //Input handling
                 if (state == Gamestate.Input)
@@ -413,9 +428,14 @@ namespace Project1
                                     float d = Vector2.Distance(new Vector2(zone.zoneRect.Center.X, zone.zoneRect.Center.Y), balls[i].center);
                                     if (d <= 2 && balls[i].vel_mag <= 3)
                                     {
-                                        //level completed!
-                                        //show the menu to proceed to the next level
-                                        state = Gamestate.Menu;
+                                        balls[i].SetVector(balls[i].vector * .5f);
+                                        if (balls[i].vector.Length() < sv)
+                                        {
+                                            //level completed!
+                                            //show the menu to proceed to the next level
+                                            levelCompleted = true;
+                                            state = Gamestate.Menu;
+                                        }
                                     }
                                     else
                                     {
@@ -432,10 +452,7 @@ namespace Project1
                                     //calculate the combined factors and revert it to magnitude and angle
                                     float x = (float)(balls[i].vel_mag * Math.Cos(balls[i].vel_rot) + zone.force * Math.Cos(Math.PI * (float) zone.direction / 4));
                                     float y = (float)(balls[i].vel_mag * Math.Sin(balls[i].vel_rot) + zone.force * Math.Sin(Math.PI * (float) zone.direction / 4));
-                                    angle = (float)Math.Atan2(y, x);
-                                    distance = (float)Math.Sqrt(x * x + y * y);
-                                    balls[i].vel_rot = angle;
-                                    balls[i].vel_mag = distance;
+                                    balls[i].SetVector(new Vector2(x, y));
                                     break;
                             }
                         }
@@ -487,12 +504,33 @@ namespace Project1
                         {
                             balls[i].Move(new Vector2((float)(balls[i].dist_remaining * Math.Cos(balls[i].vel_rot)), (float)(balls[i].dist_remaining * Math.Sin(balls[i].vel_rot))));
                         }
-                        if (balls[i].vel_mag < sv) { balls[i].vel_mag = 0; state = Gamestate.Input; }
+                        if (balls[i].vel_mag < sv)
+                        {
+                            //This checks if the ball has been sitting still for more than timeStillMax seconds. If it is, give input to the player.
+                            timeStill += (double) gameTime.ElapsedGameTime.Milliseconds/1000;
+                            if (timeStill > timeStillMax)
+                            {
+                                balls[i].vel_mag = 0;
+                                state = Gamestate.Input;
+                            }
+                            }
+                            else
+                        {
+                            timeStill = 0;
+                        }
 
                      //checkOverlapping
                     } else
                     {
-                        state = Gamestate.Input;
+                        if (checkZone(balls[i]).direction==9)
+                        {
+                            state = Gamestate.Menu;
+                        }
+                        else
+                        {
+                            state = Gamestate.Input;
+
+                        }
                     }
                 }
                 updateSinceLastFrame = true;
@@ -711,7 +749,7 @@ namespace Project1
          */
         protected override void Draw(GameTime gameTime)
         {
-            GraphicsDevice.Clear(Color.CornflowerBlue);
+            GraphicsDevice.Clear(Color.ForestGreen);
 
             _spriteBatch.Begin();
             //Draw zones
@@ -786,7 +824,14 @@ namespace Project1
                 var x = (menus[i].rectangle.X + (menus[i].rectangle.Width / 2)) - (_font.MeasureString(text).X / 2);
                 var y = (menus[i].rectangle.Y + (menus[i].rectangle.Height / 2)) - (_font.MeasureString(text).Y / 2);
 
-                _spriteBatch.DrawString(_font, text, new Vector2(x, y), Color.White);
+                _spriteBatch.DrawString(_font, text, new Vector2(x, y), Color.White, 0f, new Vector2(0,0), 3f, SpriteEffects.None, 1);
+            }
+            if (levelCompleted)
+            {
+                string text = "LEVEL COMPLETED!";
+                var x = 150;
+                var y = 100;
+                _spriteBatch.DrawString(_font, text, new Vector2(x, y), Color.White, 0f, new Vector2(0, 0), 2f, SpriteEffects.None, 1);
             }
 
 
