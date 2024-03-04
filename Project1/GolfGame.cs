@@ -22,6 +22,9 @@ using System.Security.Cryptography.Xml;
 using System.Runtime.ConstrainedExecution;
 using SharpDX.X3DAudio;
 using SharpDX.WIC;
+using SharpDX.Direct2D1;
+using static System.Net.Mime.MediaTypeNames;
+using SpriteBatch = Microsoft.Xna.Framework.Graphics.SpriteBatch;
 
 
 /**
@@ -35,6 +38,11 @@ namespace Project1
     {
         private GraphicsDeviceManager _graphics;
         private SpriteBatch _spriteBatch;
+        private SpriteFont _font;
+
+        //The Gamestate is held by a class that controls what type of input the program accepts.
+        //If given more time, Gamestate class would have been an abstract with various level draw and update features.
+        //Currently, it distinguishes between the state that draws the golfball and the physics handling state.
         public static Gamestate state;
         private Zone zone;
         Random rand = new Random();
@@ -43,6 +51,9 @@ namespace Project1
         private int wallWidth = 10;
         //Ball size
         private int ballSize = 64;
+
+        public static Boolean levelCompleted;
+        public static int curLevel;
         
 
         //Texture data (move to loadcontent eventually)
@@ -53,6 +64,7 @@ namespace Project1
         private Texture2D arrow;
         private Texture2D debugpixel;
         private Texture2D hole;
+        private Texture2D buttontex;
 
         private float friction = .98f;
         private float sv = .2f; //Stopping value. The minimum speed before friction stops an object.
@@ -65,6 +77,8 @@ namespace Project1
         List<Ball> balls;
         List<Wall> walls;
         List<Zone> zones;
+        List<Button> buttons;
+        List<Menu> menus;
 
         //debug markers. two produces a vector and one places points
         List<Vector2> debug;
@@ -110,7 +124,8 @@ namespace Project1
 
 
 
-
+            curLevel = 0;
+            levelCompleted = false;
 
             origin = new Vector2(400, 400);
 
@@ -118,16 +133,15 @@ namespace Project1
             //Initialize first ball. Will move later if multiplayer is enabled.
             balls = new List<Ball>();
 
-            Ball b = new Ball(new Vector2 (0,0), 16);
-            b.SetVector(new Vector2(0, 0));
-            b.Update();
-            balls.Add(b);
+            
             //Initialize test wall.
             walls = new List<Wall>();
             zones = new List<Zone>();
             debug = new List<Vector2>();
             debuglines = new List<Vector2>();
             debuglinesRed = new List<Vector2>();
+            buttons = new List<Button>();
+            menus = new List<Menu>();
             base.Initialize();
         }
 
@@ -143,16 +157,36 @@ namespace Project1
             StreamReader reader = new StreamReader(winDir +"/Content/" + filename);
             try
             {
+                //Get the type of the level (0 = menu, 1 = level)
+                int type = int.Parse(reader.ReadLine().ToCharArray());
                 //Get the starting point for the ball
                 String[] line = reader.ReadLine().Split(',');
                 origin = new Vector2(int.Parse(line[0]), int.Parse(line[1]));
                 
-                //until the file is empty, add each line to the list and parse it as a wall with two points.
+                //until the file is empty, add each line to the list and parse it as either a wall, a zone, a button or a text
                 do
                 {
                     AddListItem(reader.ReadLine());
                 }
                 while (reader.Peek() != -1);
+                if (type == 0)
+                {
+                    balls.Clear();
+                    state = Gamestate.Menu;
+                }
+                if (type == 1)
+                {
+                    Button b1 = new Button(buttontex, _font);
+                    Button b2 = new Button(buttontex, _font);
+                    b1.Text = "prev";
+                    b2.Text = "next";
+                    b1.Rectangle = new Rectangle(30, _graphics.PreferredBackBufferHeight-94, 128, 64);
+                    b2.Rectangle = new Rectangle(_graphics.PreferredBackBufferWidth - 158, _graphics.PreferredBackBufferHeight-94, 128, 64);
+                    b1.Click += new EventHandler<LevelChangeEventArgs>(prevLevel);
+                    b2.Click += new EventHandler<LevelChangeEventArgs>(nextLevel);
+                    buttons.Add(b1);
+                    buttons.Add(b2);
+                }
             }
             catch
             {
@@ -168,29 +202,108 @@ namespace Project1
         private void AddListItem(String text)
         {
             String[] first = text.Split('|');
-            if (first[0].ToCharArray()[0] == 'a')
-            {
-                String[] points = first[1].Split(',');
-                Vector2 p1 = new Vector2(int.Parse(points[0]), int.Parse(points[1]));
-                Vector2 p2 = new Vector2(int.Parse(points[2]), int.Parse(points[3]));
-                Wall w = new Wall(p1,p2);
-                walls.Add(w);
+            String[] points;
+            switch (first[0].ToCharArray()[0]) {
+                case 'a':
+                    points = first[1].Split(',');
+                    Vector2 p1 = new Vector2(int.Parse(points[0]), int.Parse(points[1]));
+                    Vector2 p2 = new Vector2(int.Parse(points[2]), int.Parse(points[3]));
+                    Wall w = new Wall(p1, p2);
+                    walls.Add(w);
+                    break;
+                case 'b':
+                    points = first[1].Split(',');
+                    Zone z = new Zone();
+                    z.direction = int.Parse(points[0]);
+                    z.force = float.Parse(points[1]);
+                    z.zoneRect = new Rectangle(int.Parse(points[2]), int.Parse(points[3]), int.Parse(points[4]), int.Parse(points[5]));
+                    zones.Add(z);
+                    break;
+                case 'c':
+                    //If the level data says this is a button, read it as: x,y,width,height,TEXT,eventId
+                    points = first[1].Split(',');
+                    Button b = new Button(buttontex, _font);
+                    b.Text = points[4];
+                    b.Rectangle = new Rectangle(int.Parse(points[0]),int.Parse(points[1]), int.Parse(points[2]), int.Parse(points[3]));
+                    switch (points[5].ToCharArray()[0])
+                    {
+                        case '0':
+                            //0 means the button is the next level button
+                            b.Click += new EventHandler<LevelChangeEventArgs>(nextLevel);
+                            break;
+                        case '1':
+                            //1 means the button is the previous level button
+                            b.Click += new EventHandler<LevelChangeEventArgs>(prevLevel);
+                            break;
+                        case '2':
+                            //2 means the button is the load level button
+
+                            break;
+                    }
+
+                    buttons.Add(b);
+                    break;
             }
-            else if (first[0].ToCharArray()[0] == 'b')
+
+        }
+
+        static void nextLevel(object sender, LevelChangeEventArgs e)
+        {
+            if (checkLevel(curLevel + 1))
             {
-                //form: direction 1-8/9, force, rectangle
-                String[] points = first[1].Split(',');
-                Zone z = new Zone();
-                z.direction = int.Parse(points[0]);
-                z.force = float.Parse(points[1]);
-                z.zoneRect = new Rectangle(int.Parse(points[2]), int.Parse(points[3]), int.Parse(points[4]), int.Parse(points[5]));
-                zones.Add(z);
+                GolfGame.curLevel++;
+                (e).g.UpdateLevel();
             }
+        }
+
+        static void prevLevel(object sender, LevelChangeEventArgs e)
+        {
+            if (checkLevel(curLevel - 1))
+            {
+                GolfGame.curLevel--;
+                (e).g.UpdateLevel();
+            }
+        }
+
+        public void UpdateLevel()
+        {
+            balls.Clear();
+            walls.Clear();
+            zones.Clear();
+            buttons.Clear();
+            menus.Clear();
+            LoadContent();
+        }
+
+        public static Boolean checkLevel(int n)
+        {
+            string winDir = Directory.GetCurrentDirectory();
+            winDir = winDir.Substring(0, winDir.Length - 24);
+            //uses levelname inside of content to search for a text file made with split in mind.
+            
+            try
+            {
+                StreamReader reader = new StreamReader(winDir + "/Content/" + n + ".txt");
+                int type = int.Parse(reader.ReadLine().ToCharArray());
+
+                reader.Close();
+            }
+            catch
+            {
+                
+                return false;
+            }
+            finally
+            {
+                
+            }
+            return true;
         }
 
         protected override void LoadContent()
         {
             _spriteBatch = new SpriteBatch(GraphicsDevice);
+            _font = Content.Load<SpriteFont>("Arial");
             //Load the Golf Ball sprite
             golfball = Content.Load<Texture2D>("golf ball");
             wall = Content.Load<Texture2D>("wall");
@@ -199,12 +312,21 @@ namespace Project1
             arrow = Content.Load<Texture2D>("arrow");
             debugpixel = Content.Load<Texture2D>("debugpixel");
             hole = Content.Load<Texture2D>("hole");
+            buttontex = Content.Load<Texture2D>("button");
+
+            Ball b = new Ball(new Vector2(0, 0), 16);
+            b.SetVector(new Vector2(0, 0));
+            b.Update();
+            balls.Add(b);
 
             //Loads the level of name levelname in the content folder.
-            levelname = "0.txt";
+            levelname = curLevel + ".txt";
             ReadMap(levelname);
-            balls[0].SetX(origin.X);
-            balls[0].SetY(origin.Y);
+            for (int i = 0; i < balls.Count; i++)
+            {
+                balls[i].SetX(origin.X);
+                balls[i].SetY(origin.Y);
+            }
         }
 
         protected override void Update(GameTime gameTime)
@@ -276,7 +398,7 @@ namespace Project1
                     if (balls[i].vel_mag != 0)
                     {
                         
-
+                        
                         //move to collision
                         balls[i].SetVector(balls[i].vector * friction);
                         balls[i].rot += balls[i].vel_mag;
@@ -375,7 +497,11 @@ namespace Project1
                 }
                 updateSinceLastFrame = true;
             }
-                base.Update(gameTime);
+            for (int i = 0; i < buttons.Count; i++)
+            {
+                buttons[i].Update(gameTime, this);
+            }
+            base.Update(gameTime);
         }
 
         /**
@@ -649,6 +775,20 @@ namespace Project1
             }
 
             //draw ui
+            for (int i = 0; i < buttons.Count; i++)
+            {
+                buttons[i].Draw(gameTime, _spriteBatch);
+            }
+            for (int i = 0; i < menus.Count; i++)
+            {
+                //TODO add text and other
+                string text = menus[i].action;
+                var x = (menus[i].rectangle.X + (menus[i].rectangle.Width / 2)) - (_font.MeasureString(text).X / 2);
+                var y = (menus[i].rectangle.Y + (menus[i].rectangle.Height / 2)) - (_font.MeasureString(text).Y / 2);
+
+                _spriteBatch.DrawString(_font, text, new Vector2(x, y), Color.White);
+            }
+
 
             _spriteBatch.End();
             updateSinceLastFrame = false;
@@ -727,5 +867,17 @@ namespace Project1
     {
         public Rectangle rectangle;
         public Texture2D texture;
+        /**
+         * Actions are whatever is stored to occur on a click.
+         * 
+         * 
+         */
+        public string action;
     }
+
+    public class LevelChangeEventArgs : EventArgs
+    {
+        public GolfGame g;
+    }
+
 }
