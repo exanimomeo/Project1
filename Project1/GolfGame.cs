@@ -43,6 +43,7 @@ namespace Project1
         private int wallWidth = 10;
         //Ball size
         private int ballSize = 64;
+        
 
         //Texture data (move to loadcontent eventually)
         private Texture2D background;
@@ -65,10 +66,11 @@ namespace Project1
         List<Wall> walls;
         List<Zone> zones;
 
-        //debug markers. One produces a vector and one places points
+        //debug markers. two produces a vector and one places points
         List<Vector2> debug;
         List<Vector2> debuglines;
         List<Vector2> debuglinesRed;
+        private static Boolean debugmode;
 
         //The origin of the currently selected map. The ball will spawn here.
         private Vector2 origin;
@@ -273,12 +275,12 @@ namespace Project1
                 {
                     if (balls[i].vel_mag != 0)
                     {
-                        balls[i].PreCalc();
+                        
 
                         //move to collision
                         balls[i].SetVector(balls[i].vector * friction);
                         balls[i].rot += balls[i].vel_mag;
-                        zone = checkZone();
+                        zone = checkZone(balls[i]);
                         if (zone.direction != 0)
                         {
                             float distance, angle;
@@ -286,15 +288,28 @@ namespace Project1
                             {
                                 case 9:
                                     //on the hole.
-                                    state = Gamestate.Menu;
-                                    //TODO
-                                    // add the angle to velocity with an inverse proportion to distance. At a minimum distance, change state to finished.
+                                    float d = Vector2.Distance(new Vector2(zone.zoneRect.Center.X, zone.zoneRect.Center.Y), balls[i].center);
+                                    if (d <= 2 && balls[i].vel_mag <= 3)
+                                    {
+                                        //level completed!
+                                        //show the menu to proceed to the next level
+                                        state = Gamestate.Menu;
+                                    }
+                                    else
+                                    {
+                                        // add force to velocity with an inverse proportion to distance.
+                                        Vector2 v = (new Vector2(zone.zoneRect.Center.X, zone.zoneRect.Center.Y) - balls[i].center);
+                                        v.Normalize();
+                                        v *= zone.force;
+                                        v /= d;
+                                        balls[i].SetVector(balls[i].vector + v);
+                                    }
                                     break;
                                 default:
                                     //the values 1-8 denote direction of hill movement, starting from a north facing hill and moving clockwise.
                                     //calculate the combined factors and revert it to magnitude and angle
-                                    float x = (float)(balls[i].vel_mag * Math.Sin(balls[i].vel_rot) + zone.force * Math.Sin(Math.PI * zone.direction / 4));
-                                    float y = (float)(balls[i].vel_mag * Math.Cos(balls[i].vel_rot) + zone.force * Math.Cos(Math.PI * zone.direction / 4));
+                                    float x = (float)(balls[i].vel_mag * Math.Cos(balls[i].vel_rot) + zone.force * Math.Cos(Math.PI * (float) zone.direction / 4));
+                                    float y = (float)(balls[i].vel_mag * Math.Sin(balls[i].vel_rot) + zone.force * Math.Sin(Math.PI * (float) zone.direction / 4));
                                     angle = (float)Math.Atan2(y, x);
                                     distance = (float)Math.Sqrt(x * x + y * y);
                                     balls[i].vel_rot = angle;
@@ -302,6 +317,7 @@ namespace Project1
                                     break;
                             }
                         }
+                        balls[i].PreCalc();
                     //checkCollision for all walls for all balls'
                     //todo (add a collision handler that finds the shortest distance collision to react to first and repeat.
                     collisionStep:
@@ -320,7 +336,9 @@ namespace Project1
                                 //checks the collision of the wall and the ball to see if they intersect.
                                 
                                 CollisionResult cr1 = checkCollision(balls[i], walls[j]);
-                                if (cr1.isCollision && cr1.distance > 0 && cr1.distance < cr.distance)
+                                //the -ballsize/2 is to check if the position for collision is already behind the ball's radius.
+                                //otherwise, the rest will result in negative distance, which means they are behind the ball and should be ignored.
+                                if (cr1.isCollision && cr1.distance > -ballSize/2 && cr1.distance < cr.distance)
                                 {
                                     //replace the collision result with the closest collision target.
                                     cr = cr1;
@@ -334,13 +352,13 @@ namespace Project1
                         if (cr.isCollision && cr.distance <= balls[i].dist_remaining)
                         {
                             //move the ball the closest to the nearest source of collision and repeat the check with remaining movement.
-
+                            //because we already check if it's closer than dist_remaining, we don't have to use Min.
                             balls[i].SetVector(cr.reflection);
                             balls[i].Move(new Vector2((float)(cr.distance * Math.Cos(balls[i].vel_rot)), (float)(cr.distance * Math.Sin(balls[i].vel_rot))));
                             balls[i].dist_remaining -= cr.distance;
-                            //balls[i].vel_rot = cr.reflection;
-                            //balls[i].vector = new Vector2( (float)Math.Sin(balls[i].vel_rot) * balls[i].vel_mag, (float)Math.Cos(balls[i].vel_rot) * balls[i].vel_mag);
                             
+                            //This will repeat the collision to check for any additional reflections needed this frame.
+                            //This is important because if it isn't checked again, then the ball could go through corners.
                             goto collisionStep;
                         }
                         else
@@ -366,32 +384,32 @@ namespace Project1
          */
         private float distanceToCollision(Wall w, Ball ball,Vector2 intersect, Vector2 closestpoint)
         {
-            debuglines.Add(closestpoint);
-            debuglines.Add(ball.center);
-            debuglines.Add(ball.center);
-            debuglines.Add(intersect);
-            debug.Add(intersect);
-            debug.Add(closestpoint);
+            if (debugmode)
+            {
+                debuglines.Add(closestpoint);
+                debuglines.Add(ball.center);
+                debuglines.Add(ball.center);
+                debuglines.Add(intersect);
+                debug.Add(intersect);
+                debug.Add(closestpoint);
+            }
             Vector2 aCv = intersect - ball.center;
             Vector2 p1Cv = ball.center - closestpoint;
             Vector2 p2 = intersect - ball.radius * ((aCv.Length() / p1Cv.Length())) * ball.vector / ball.vector.Length();
-            debuglines.Add(ball.center);
-
-            debuglines.Add(ball.center + ball.vector * 4);
-            //debugVector.Add(p2);
-            //debug.Add(p2);
+            
             return (p2 - ball.center).Length();
         }
 
         
         //TODO checks if on a hill or a hole.
         //Doesn't do multiple overlapping zones. keep them separate. To fix this, make it a list of zones that apply.
-        private Zone checkZone()
+        private Zone checkZone(Ball b)
         {
             for (int i = 0; i < zones.Count; i++)
             {
                 //checks if the centerpoint of the ball is within the zoneRect.
-                if (balls[0].GetX() > zones[i].zoneRect.Left && balls[0].GetX() < zones[i].zoneRect.Right && balls[0].GetY() < zones[i].zoneRect.Top && balls[0].GetY() > zones[i].zoneRect.Bottom)
+                
+                if (zones[i].zoneRect.Intersects(b.collider))
                 {
                     return zones[i];
                 }
@@ -479,8 +497,11 @@ namespace Project1
                 if (closestpoint != null)
                 {
                     Vector2 normal =GetNormal(w, b.center);
-                    debuglinesRed.Add((Vector2)intersect);
-                    debuglinesRed.Add((Vector2) intersect + normal * 20);
+                    if (debugmode)
+                    {
+                        debuglinesRed.Add((Vector2)intersect);
+                        debuglinesRed.Add((Vector2)intersect + normal * 20);
+                    }
                     float d = distanceToCollision(w, b, (Vector2)intersect, (Vector2) closestpoint);
                     if (d < 0) return new CollisionResult();
                     //float reflectionAngle = 2 * (float) Math.Atan2(w.p1.X - w.p2.X, w.p1.Y - w.p2.Y) - b.vel_rot;
@@ -570,7 +591,14 @@ namespace Project1
             //Draw zones
             for (int i = 0; i < zones.Count; i++)
             {
-                _spriteBatch.Draw(background, zones[i].zoneRect, Color.White);
+                if (zones[i].direction == 9)
+                {
+                    _spriteBatch.Draw(hole, zones[i].zoneRect, Color.White);
+                }
+                else
+                {
+                    _spriteBatch.Draw(background, zones[i].zoneRect, Color.White);
+                }
             }
             //draw the player controls
             if (state == Gamestate.Input)
