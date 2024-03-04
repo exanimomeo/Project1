@@ -17,6 +17,7 @@ namespace Project1
         Exit,
         Init,
         Input,
-        Menu
+        Menu,
+        Text
     };
 }

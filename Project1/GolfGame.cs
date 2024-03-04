@@ -36,6 +36,7 @@ namespace Project1
 {
     public class GolfGame : Game
     {
+        public GameWindow gw;
         private GraphicsDeviceManager _graphics;
         private SpriteBatch _spriteBatch;
         private SpriteFont _font;
@@ -46,6 +47,7 @@ namespace Project1
         public static Gamestate state;
         private Zone zone;
         Random rand = new Random();
+        public static string customlevelname;
 
         //Wall width
         private int wallWidth = 10;
@@ -65,6 +67,7 @@ namespace Project1
         private Texture2D debugpixel;
         private Texture2D hole;
         private Texture2D buttontex;
+        private Texture2D texttex;
 
         private float friction = .98f;
         private float sv = .2f; //Stopping value. The minimum speed before friction stops an object.
@@ -79,6 +82,7 @@ namespace Project1
         List<Zone> zones;
         List<Button> buttons;
         List<Menu> menus;
+        public static Textbox textbox;
 
         //debug markers. two produces a vector and one places points
         List<Vector2> debug;
@@ -130,7 +134,7 @@ namespace Project1
             state = Gamestate.Init;
             balls = new List<Ball>();
 
-            
+
             //Initialize test wall.
             walls = new List<Wall>();
             zones = new List<Zone>();
@@ -239,7 +243,7 @@ namespace Project1
                             break;
                         case '2':
                             //2 means the button is the load level button
-                            //TODO
+                            b.Click += new EventHandler<LevelChangeEventArgs>(loadLevel);
                             break;
                     }
 
@@ -276,6 +280,20 @@ namespace Project1
             {
                 GolfGame.curLevel--;
                 (e).g.UpdateLevel();
+            }
+        }
+
+        static void loadLevel(object sender, LevelChangeEventArgs e)
+        {
+            //If the button has already been pressed, go to level.
+            if (state == Gamestate.Text)
+            {
+                GolfGame.customlevelname = GolfGame.textbox.ToString();
+                GolfGame.curLevel = -1;
+                (e).g.UpdateLevel();
+            } else
+            {
+                state = Gamestate.Text;
             }
         }
 
@@ -316,8 +334,14 @@ namespace Project1
             return true;
         }
 
+        public void _Exit()
+        {
+            Exit();
+        }
+
         protected override void LoadContent()
         {
+            gw = Window;
             _spriteBatch = new SpriteBatch(GraphicsDevice);
             _font = Content.Load<SpriteFont>("Arial");
             //Load the Golf Ball sprite
@@ -329,6 +353,10 @@ namespace Project1
             debugpixel = Content.Load<Texture2D>("debugpixel");
             hole = Content.Load<Texture2D>("hole");
             buttontex = Content.Load<Texture2D>("button");
+            texttex = Content.Load<Texture2D>("textbox");
+            //textbox must be made here because the texture is handled here
+            textbox = new Textbox(100, 100, 200, 100, texttex,_font, gw);
+
 
             //Initialize first ball. Will move later if multiplayer is enabled.
             Ball b = new Ball(new Vector2(0, 0), 16);
@@ -336,8 +364,16 @@ namespace Project1
             b.Update();
             balls.Add(b);
 
-            //Loads the level of name levelname in the content folder.
-            levelname = curLevel + ".txt";
+            if (curLevel != -1)
+            {
+                //Loads the level of name levelname in the content folder.
+                levelname = curLevel + ".txt";
+                
+            } else
+            {
+                //Loads a custom level name
+                levelname = customlevelname;
+            }
             ReadMap(levelname);
             for (int i = 0; i < balls.Count; i++)
             {
@@ -539,6 +575,7 @@ namespace Project1
             {
                 buttons[i].Update(gameTime, this);
             }
+            textbox.Update(gameTime);
             base.Update(gameTime);
         }
 
@@ -832,6 +869,10 @@ namespace Project1
                 var x = 150;
                 var y = 100;
                 _spriteBatch.DrawString(_font, text, new Vector2(x, y), Color.White, 0f, new Vector2(0, 0), 2f, SpriteEffects.None, 1);
+            }
+            if (state == Gamestate.Text)
+            {
+                textbox.Draw(gameTime, _spriteBatch);
             }
 
 
