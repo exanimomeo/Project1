@@ -37,6 +37,12 @@
 /processorParam:TextureFormat=Color
 /build:background.png
 
+#begin ballinhole.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:ballinhole.wav
+
 #begin button.png
 /importer:TextureImporter
 /processor:TextureProcessor
@@ -116,6 +122,12 @@
 /processorParam:TextureFormat=Color
 /build:pointer.png
 
+#begin strike.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:strike.wav
+
 #begin textbox.png
 /importer:TextureImporter
 /processor:TextureProcessor
@@ -139,4 +151,10 @@
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
 /build:wall.png
+
+#begin wallhit.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:wallhit.wav
 

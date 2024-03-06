@@ -25,6 +25,8 @@ using SharpDX.WIC;
 using SharpDX.Direct2D1;
 using static System.Net.Mime.MediaTypeNames;
 using SpriteBatch = Microsoft.Xna.Framework.Graphics.SpriteBatch;
+using Microsoft.Xna.Framework.Media;
+using Microsoft.Xna.Framework.Audio;
 
 
 /**
@@ -56,6 +58,9 @@ namespace Project1
 
         public static Boolean levelCompleted;
         public static int curLevel;
+
+        public static int score;
+        private Vector2 scoreposition;
         
 
         //Texture data (move to loadcontent eventually)
@@ -68,6 +73,12 @@ namespace Project1
         private Texture2D hole;
         private Texture2D buttontex;
         private Texture2D texttex;
+        private SoundEffect ballinhole;
+        private SoundEffect wallhit;
+        private Song rolling;       //Rolling sfx, volume dependant on speed. 
+        private SoundEffect strike;
+        private Song confetti;
+        private Song aah;           //Was going to be the "aah" sound from wii golf.
 
         private float friction = .98f;
         private float sv = .2f; //Stopping value. The minimum speed before friction stops an object.
@@ -143,6 +154,8 @@ namespace Project1
             debuglinesRed = new List<Vector2>();
             buttons = new List<Button>();
             menus = new List<Menu>();
+            scoreposition = new Vector2(12, 12);
+            score = 0;
             base.Initialize();
         }
 
@@ -151,6 +164,7 @@ namespace Project1
          */
         private void ReadMap(String filename)
         {
+            score = 0;
             levelCompleted = false;
             //gets the path to the base project1 folder.
             string winDir = Directory.GetCurrentDirectory();
@@ -354,6 +368,12 @@ namespace Project1
             hole = Content.Load<Texture2D>("hole");
             buttontex = Content.Load<Texture2D>("button");
             texttex = Content.Load<Texture2D>("textbox");
+            strike = Content.Load<SoundEffect>("strike");
+            wallhit = Content.Load<SoundEffect>("wallhit");
+            //aah = Content.Load<Song>("aah");
+            ballinhole = Content.Load<SoundEffect>("ballinhole");
+            //rolling = Content.Load<Song>("rolling");
+            //confetti = Content.Load<Song>("confetti");
             //textbox must be made here because the texture is handled here
             textbox = new Textbox(100, 100, 200, 100, texttex,_font, gw);
 
@@ -422,6 +442,8 @@ namespace Project1
                             state = Gamestate.Running;
                             Vector2 forceVector = new Vector2((float)(Math.Cos(aim-Math.PI/2) * power * 2), (float)(Math.Sin(aim-Math.PI/2) * power * 2));
                             balls[0].SetVector(forceVector.X, forceVector.Y);
+                            score++;
+                            strike.Play();
                             spacedownlast = false;
                         }
                         else
@@ -469,6 +491,8 @@ namespace Project1
                                         {
                                             //level completed!
                                             //show the menu to proceed to the next level
+                                            ballinhole.Play();
+                                            //MediaPlayer.Play(confetti);
                                             levelCompleted = true;
                                             state = Gamestate.Menu;
                                         }
@@ -531,6 +555,7 @@ namespace Project1
                             balls[i].SetVector(cr.reflection);
                             balls[i].Move(new Vector2((float)(cr.distance * Math.Cos(balls[i].vel_rot)), (float)(cr.distance * Math.Sin(balls[i].vel_rot))));
                             balls[i].dist_remaining -= cr.distance;
+                            wallhit.Play();
                             
                             //This will repeat the collision to check for any additional reflections needed this frame.
                             //This is important because if it isn't checked again, then the ball could go through corners.
@@ -799,6 +824,8 @@ namespace Project1
                 else
                 {
                     _spriteBatch.Draw(background, zones[i].zoneRect, Color.White);
+                    Rectangle rect = new Rectangle(zones[i].zoneRect.Center, new Microsoft.Xna.Framework.Point(25,25));
+                    _spriteBatch.Draw(arrow, new Rectangle(zones[i].zoneRect.Center.X, zones[i].zoneRect.Center.Y,25,25), rect, Color.GreenYellow, zones[i].direction/(4*(float) Math.PI), new Vector2(0,0), SpriteEffects.None, 1);
                 }
             }
             //draw the player controls
@@ -853,6 +880,10 @@ namespace Project1
             for (int i = 0; i < buttons.Count; i++)
             {
                 buttons[i].Draw(gameTime, _spriteBatch);
+            }
+            if (!levelname.Equals("0.txt") && state != Gamestate.Text)
+            {
+                _spriteBatch.DrawString(_font, "score: " + score, scoreposition, Color.Red);
             }
             for (int i = 0; i < menus.Count; i++)
             {
